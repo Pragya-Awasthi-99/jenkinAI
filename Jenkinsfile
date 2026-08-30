@@ -1,4 +1,3 @@
-vi Jenkinsfile
 
 
 pipeline {
