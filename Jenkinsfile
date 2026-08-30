@@ -1,3 +1,6 @@
+vi Jenkinsfile
+
+
 pipeline {
   agent {
     kubernetes {
@@ -11,6 +14,8 @@ metadata:
 spec:
   serviceAccountName: jenkins
   restartPolicy: Never
+  securityContext:
+    fsGroup: 1000
   nodeSelector:
     kubernetes.io/os: linux
 
@@ -70,10 +75,12 @@ spec:
 
 
     - name: kubectl
-      image: bitnami/kubectl:latest
+      image: alpine/k8s:1.31.0
       command:
         - cat
       tty: true
+      securityContext:
+        runAsUser: 0
       resources:
         requests:
           cpu: "25m"
@@ -110,6 +117,8 @@ spec:
   environment {
     IMAGE_NAME = "ai-cicd-nodeapp"
     K8S_NAMESPACE = "ai-cicd"
+
+
     OLLAMA_URL = "http://ollama.ai-cicd.svc.cluster.local:11434"
     OLLAMA_MODEL = "tinyllama"
 
@@ -137,10 +146,8 @@ spec:
             checkout scm
 
 
-            sh '''
-              mkdir -p logs
-              printf "Checkout\\n" > logs/current-stage.txt
-            '''
+            sh 'mkdir -p logs'
+            writeFile file: 'logs/current-stage.txt', text: "Checkout\n"
 
 
             env.GIT_COMMIT_SHORT = sh(
@@ -174,14 +181,7 @@ spec:
         script {
           env.CURRENT_STAGE = "Install Dependencies"
           env.FAILED_STAGE = "Install Dependencies"
-        }
-
-
-        container('jnlp') {
-          sh '''
-            mkdir -p logs
-            printf "Install Dependencies\\n" > logs/current-stage.txt
-          '''
+          writeFile file: 'logs/current-stage.txt', text: "Install Dependencies\n"
         }
 
 
@@ -223,14 +223,7 @@ spec:
         script {
           env.CURRENT_STAGE = "Run Unit Tests"
           env.FAILED_STAGE = "Run Unit Tests"
-        }
-
-
-        container('jnlp') {
-          sh '''
-            mkdir -p logs
-            printf "Run Unit Tests\\n" > logs/current-stage.txt
-          '''
+          writeFile file: 'logs/current-stage.txt', text: "Run Unit Tests\n"
         }
 
 
@@ -263,14 +256,7 @@ spec:
         script {
           env.CURRENT_STAGE = "Build and Push Docker Image"
           env.FAILED_STAGE = "Build and Push Docker Image"
-        }
-
-
-        container('jnlp') {
-          sh '''
-            mkdir -p logs
-            printf "Build and Push Docker Image\\n" > logs/current-stage.txt
-          '''
+          writeFile file: 'logs/current-stage.txt', text: "Build and Push Docker Image\n"
         }
 
 
@@ -305,8 +291,6 @@ spec:
 
 
               IMAGE="${DOCKER_USER}/${IMAGE_NAME}:${COMMIT_TAG}"
-
-
               echo "${IMAGE}" > logs/image-name.log
 
 
@@ -334,7 +318,7 @@ CONFIG
                 --dockerfile "${WORKSPACE}/Dockerfile" \
                 --destination "${IMAGE}" \
                 --destination "${DOCKER_USER}/${IMAGE_NAME}:latest" \
-                --cache=true \
+                --cache=false \
                 > logs/docker-build.log 2>&1
 
 
@@ -369,14 +353,7 @@ CONFIG
         script {
           env.CURRENT_STAGE = "Trivy Security Scan"
           env.FAILED_STAGE = "Trivy Security Scan"
-        }
-
-
-        container('jnlp') {
-          sh '''
-            mkdir -p logs
-            printf "Trivy Security Scan\\n" > logs/current-stage.txt
-          '''
+          writeFile file: 'logs/current-stage.txt', text: "Trivy Security Scan\n"
         }
 
 
@@ -411,6 +388,7 @@ CONFIG
 
               trivy image \
                 --skip-version-check \
+                --scanners vuln \
                 --cache-dir .trivycache \
                 --severity HIGH,CRITICAL \
                 --ignore-unfixed \
@@ -441,14 +419,7 @@ CONFIG
         script {
           env.CURRENT_STAGE = "Deploy to Kubernetes"
           env.FAILED_STAGE = "Deploy to Kubernetes"
-        }
-
-
-        container('jnlp') {
-          sh '''
-            mkdir -p logs
-            printf "Deploy to Kubernetes\\n" > logs/current-stage.txt
-          '''
+          writeFile file: 'logs/current-stage.txt', text: "Deploy to Kubernetes\n"
         }
 
 
@@ -477,7 +448,13 @@ CONFIG
             sed -i "s|REPLACE_IMAGE|${IMAGE_TO_DEPLOY}|g" /tmp/deployment.yaml
 
 
-            kubectl apply -f /tmp/deployment.yaml > logs/k8s-deploy.log 2>&1
+            echo "Final rendered deployment manifest:" > logs/k8s-deploy.log
+            cat /tmp/deployment.yaml >> logs/k8s-deploy.log
+            echo "" >> logs/k8s-deploy.log
+            echo "Applying Kubernetes manifests..." >> logs/k8s-deploy.log
+
+
+            kubectl apply -f /tmp/deployment.yaml >> logs/k8s-deploy.log 2>&1
             kubectl apply -f k8s/service.yaml >> logs/k8s-deploy.log 2>&1
             kubectl apply -f k8s/hpa.yaml >> logs/k8s-deploy.log 2>&1
 
@@ -515,6 +492,8 @@ CONFIG
         if (fileExists('logs/image-name.log')) {
           env.IMAGE_FULL_NAME = readFile('logs/image-name.log').trim()
         }
+
+
         if (fileExists('logs/git-commit.log')) {
           env.GIT_COMMIT_SHORT = readFile('logs/git-commit.log').trim()
         }
@@ -680,3 +659,5 @@ PY
     }
   }
 }
+
+
