@@ -36,7 +36,7 @@ RUN apk upgrade --no-cache && \
 
 
 COPY --from=deps /app/node_modules ./node_modules
-COPY app/server.js ./server.js
+COPY app/wrong-server.js ./server.js
 COPY app/package*.json ./
 
 
