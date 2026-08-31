@@ -6,7 +6,7 @@ metadata:
   labels:
     app: ai-cicd-nodeapp
 spec:
-  replicas: 2
+  replicas: 3
   revisionHistoryLimit: 5
   strategy:
     type: RollingUpdate
